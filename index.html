@@ -228,17 +228,20 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(xmlString, 'application/xml');
         const parseError = doc.querySelector('parsererror');
-        if (parseError) throw new Error('Invalid GPX file: ' + parseError.textContent.slice(0, 100));
+        if (parseError) {
+            const msg = parseError.textContent;
+            throw new Error('Invalid GPX file: ' + (msg.length > 100 ? msg.slice(0, 100) + '…' : msg));
+        }
 
         const points = [];
         // Try <trkpt> elements first (most common GPX format)
-        let trkpts = doc.querySelectorAll('trkpt');
+        let pointElements = doc.querySelectorAll('trkpt');
         // Fallback to <rtept> (route points)
-        if (trkpts.length === 0) trkpts = doc.querySelectorAll('rtept');
+        if (pointElements.length === 0) pointElements = doc.querySelectorAll('rtept');
         // Fallback to <wpt> (waypoints)
-        if (trkpts.length === 0) trkpts = doc.querySelectorAll('wpt');
+        if (pointElements.length === 0) pointElements = doc.querySelectorAll('wpt');
 
-        for (const pt of trkpts) {
+        for (const pt of pointElements) {
             const lat = parseFloat(pt.getAttribute('lat'));
             const lon = parseFloat(pt.getAttribute('lon'));
             if (!isNaN(lat) && !isNaN(lon)) {
@@ -350,7 +353,7 @@
     //  Wind data fetching
     // ============================================================
     async function fetchWind() {
-        if (TRACK.length < 2) { setStatus('Load GPX track first.', true); return; }
+        if (TRACK.length < 2) { setStatus('GPX track not loaded. Please refresh the page.', true); return; }
 
         const dateVal = document.getElementById('input-date').value;
         const timeVal = document.getElementById('input-time').value;
