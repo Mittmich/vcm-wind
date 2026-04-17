@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vienna Half Marathon – Wind Analysis</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; display: flex; height: 100vh; background: #1a1a2e; color: #e0e0e0; }
+        #sidebar { width: 380px; min-width: 380px; background: #16213e; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; border-right: 2px solid #0f3460; }
+        #map { flex: 1; z-index: 1; }
+        h1 { font-size: 1.3em; color: #e94560; margin-bottom: 4px; }
+        h2 { font-size: 1em; color: #0f3460; background: #e94560; padding: 6px 10px; border-radius: 4px; margin: 0 -10px; }
+        .subtitle { font-size: 0.85em; color: #8899aa; }
+        .controls { display: flex; flex-direction: column; gap: 8px; }
+        .controls label { font-size: 0.85em; color: #8899aa; }
+        .controls input, .controls select { background: #1a1a2e; border: 1px solid #0f3460; color: #e0e0e0; padding: 6px 10px; border-radius: 4px; font-size: 0.9em; }
+        .btn { background: #e94560; color: white; border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; font-size: 0.95em; font-weight: 600; transition: background 0.2s; }
+        .btn:hover { background: #c73652; }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+        .card { background: #1a1a2e; border: 1px solid #0f3460; border-radius: 6px; padding: 12px; }
+        .card h3 { font-size: 0.9em; color: #e94560; margin-bottom: 8px; }
+        .wind-display { display: flex; align-items: center; gap: 16px; }
+        .wind-arrow { width: 60px; height: 60px; position: relative; }
+        .wind-arrow svg { width: 100%; height: 100%; }
+        .wind-stats { font-size: 0.9em; line-height: 1.6; }
+        .wind-stats span { color: #4fc3f7; font-weight: 600; }
+        .result-box { text-align: center; padding: 14px; }
+        .result-big { font-size: 2em; font-weight: 700; }
+        .result-positive { color: #4caf50; }
+        .result-negative { color: #e94560; }
+        .result-neutral { color: #ffc107; }
+        .result-label { font-size: 0.8em; color: #8899aa; margin-top: 4px; }
+        .legend { display: flex; gap: 16px; justify-content: center; font-size: 0.8em; }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-color { width: 20px; height: 4px; border-radius: 2px; }
+        #profile-canvas { width: 100%; height: 120px; border-radius: 4px; background: #111; }
+        .status { font-size: 0.8em; color: #8899aa; text-align: center; padding: 4px; min-height: 24px; }
+        .status.error { color: #e94560; }
+        .info-row { display: flex; justify-content: space-between; font-size: 0.85em; padding: 2px 0; }
+        .info-row .label { color: #8899aa; }
+        .info-row .value { color: #4fc3f7; font-weight: 600; }
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { width: 100%; min-width: unset; max-height: 50vh; }
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <div>
+            <h1>🏃 Vienna City Half Marathon</h1>
+            <div class="subtitle">Wind Effect Analysis Tool</div>
+        </div>
+
+        <div class="controls">
+            <label>Race Date &amp; Start Time</label>
+            <div style="display:flex;gap:8px;">
+                <input type="date" id="input-date" value="2026-04-19" style="flex:1;">
+                <input type="time" id="input-time" value="09:00" style="width:100px;">
+            </div>
+            <button class="btn" id="btn-fetch" onclick="fetchWind()">🌬️ Load Wind Forecast</button>
+            <div class="status" id="status"></div>
+        </div>
+
+        <div class="card" id="wind-card" style="display:none;">
+            <h3>🌬️ Wind Conditions at Start</h3>
+            <div class="wind-display">
+                <div class="wind-arrow" id="wind-arrow">
+                    <svg viewBox="0 0 60 60">
+                        <circle cx="30" cy="30" r="28" fill="none" stroke="#0f3460" stroke-width="1"/>
+                        <text x="30" y="10" text-anchor="middle" fill="#8899aa" font-size="8">N</text>
+                        <text x="55" y="33" text-anchor="middle" fill="#8899aa" font-size="8">E</text>
+                        <text x="30" y="56" text-anchor="middle" fill="#8899aa" font-size="8">S</text>
+                        <text x="5" y="33" text-anchor="middle" fill="#8899aa" font-size="8">W</text>
+                        <polygon id="arrow-poly" points="30,8 24,38 30,32 36,38" fill="#4fc3f7" transform="rotate(0,30,30)"/>
+                    </svg>
+                </div>
+                <div class="wind-stats">
+                    Speed: <span id="wind-speed">–</span> km/h<br>
+                    Direction: <span id="wind-dir">–</span>°<br>
+                    From: <span id="wind-from">–</span><br>
+                    Gusts: <span id="wind-gust">–</span> km/h
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="result-card" style="display:none;">
+            <h3>📊 Path Integral Result</h3>
+            <div class="result-box">
+                <div class="result-big" id="result-value">–</div>
+                <div class="result-label">Net effective wind component (km/h)<br>along running direction (avg over track)</div>
+            </div>
+            <div style="margin-top:10px;">
+                <div class="info-row"><span class="label">Track distance</span><span class="value" id="track-dist">–</span></div>
+                <div class="info-row"><span class="label">Headwind sections</span><span class="value" id="hw-pct">–</span></div>
+                <div class="info-row"><span class="label">Tailwind sections</span><span class="value" id="tw-pct">–</span></div>
+                <div class="info-row"><span class="label">Max headwind</span><span class="value" id="max-hw">–</span></div>
+                <div class="info-row"><span class="label">Max tailwind</span><span class="value" id="max-tw">–</span></div>
+                <div class="info-row"><span class="label">Crosswind sections</span><span class="value" id="cw-pct">–</span></div>
+            </div>
+        </div>
+
+        <div class="card" id="profile-card" style="display:none;">
+            <h3>📈 Wind Effect Along Track</h3>
+            <canvas id="profile-canvas"></canvas>
+            <div class="legend" style="margin-top:8px;">
+                <div class="legend-item"><div class="legend-color" style="background:#4caf50;"></div> Tailwind</div>
+                <div class="legend-item"><div class="legend-color" style="background:#e94560;"></div> Headwind</div>
+                <div class="legend-item"><div class="legend-color" style="background:#ffc107;"></div> Crosswind</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>ℹ️ How it works</h3>
+            <div style="font-size:0.8em;color:#8899aa;line-height:1.5;">
+                Wind data is fetched from <strong>Open-Meteo</strong> (free, no API key).
+                The path integral computes the dot product of the wind vector with the
+                running direction at each track segment, then averages over the total distance.
+                Positive = net tailwind, Negative = net headwind.
+                The heatmap on the map shows <span style="color:#4caf50">green</span> for tailwind
+                and <span style="color:#e94560">red</span> for headwind segments.
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    // ============================================================
+    //  Vienna City Half Marathon - approximate GPS track
+    //  Based on the typical VCM half marathon route
+    // ============================================================
+    const TRACK = [
+        // Start area - near Reichsbrücke / Wagramer Straße
+        [48.2322, 16.4135],
+        [48.2315, 16.4125],
+        [48.2308, 16.4112],
+        [48.2300, 16.4098],
+        // South across Reichsbrücke area toward Mexikoplatz
+        [48.2290, 16.4082],
+        [48.2282, 16.4068],
+        [48.2275, 16.4055],
+        [48.2268, 16.4042],
+        [48.2260, 16.4030],
+        // Along Lassallestraße heading south
+        [48.2252, 16.4018],
+        [48.2245, 16.4005],
+        [48.2238, 16.3992],
+        [48.2230, 16.3978],
+        [48.2222, 16.3965],
+        [48.2215, 16.3955],
+        [48.2208, 16.3948],
+        [48.2200, 16.3940],
+        // Praterstern
+        [48.2192, 16.3935],
+        [48.2188, 16.3932],
+        // Into Prater - heading southeast along Hauptallee
+        [48.2183, 16.3940],
+        [48.2178, 16.3952],
+        [48.2172, 16.3968],
+        [48.2166, 16.3985],
+        [48.2160, 16.4005],
+        [48.2154, 16.4025],
+        [48.2148, 16.4045],
+        [48.2142, 16.4065],
+        [48.2136, 16.4085],
+        [48.2130, 16.4105],
+        [48.2124, 16.4125],
+        [48.2118, 16.4145],
+        [48.2112, 16.4165],
+        [48.2106, 16.4185],
+        [48.2100, 16.4205],
+        [48.2094, 16.4225],
+        [48.2088, 16.4245],
+        [48.2082, 16.4265],
+        [48.2076, 16.4285],
+        [48.2070, 16.4305],
+        [48.2064, 16.4325],
+        [48.2058, 16.4345],
+        [48.2052, 16.4365],
+        [48.2046, 16.4382],
+        [48.2040, 16.4398],
+        [48.2035, 16.4412],
+        // Near the Lusthaus / end of Hauptallee - turnaround
+        [48.2030, 16.4425],
+        [48.2026, 16.4435],
+        [48.2023, 16.4442],
+        // Turn around - heading back northwest via parallel path (Stadion-Allee side)
+        [48.2027, 16.4448],
+        [48.2032, 16.4445],
+        [48.2038, 16.4435],
+        [48.2045, 16.4418],
+        [48.2052, 16.4400],
+        [48.2060, 16.4378],
+        [48.2068, 16.4355],
+        [48.2076, 16.4332],
+        [48.2084, 16.4308],
+        [48.2092, 16.4285],
+        [48.2100, 16.4262],
+        [48.2107, 16.4240],
+        [48.2113, 16.4220],
+        // Slight detour via Stadion area
+        [48.2118, 16.4202],
+        [48.2122, 16.4185],
+        [48.2127, 16.4168],
+        [48.2132, 16.4150],
+        [48.2138, 16.4130],
+        [48.2144, 16.4110],
+        [48.2150, 16.4090],
+        [48.2156, 16.4070],
+        [48.2162, 16.4050],
+        [48.2168, 16.4030],
+        [48.2174, 16.4010],
+        [48.2180, 16.3990],
+        [48.2185, 16.3972],
+        [48.2188, 16.3955],
+        // Back at Praterstern
+        [48.2190, 16.3938],
+        [48.2192, 16.3930],
+        // West along Praterstraße
+        [48.2190, 16.3920],
+        [48.2186, 16.3908],
+        [48.2182, 16.3895],
+        [48.2177, 16.3882],
+        [48.2172, 16.3868],
+        [48.2167, 16.3855],
+        [48.2162, 16.3842],
+        [48.2157, 16.3828],
+        [48.2152, 16.3815],
+        [48.2147, 16.3802],
+        [48.2142, 16.3790],
+        // Near Nestroyplatz
+        [48.2138, 16.3780],
+        [48.2134, 16.3772],
+        // Continue to Schwedenplatz / Donaukanal
+        [48.2128, 16.3765],
+        [48.2122, 16.3760],
+        [48.2118, 16.3758],
+        // Schwedenplatz area
+        [48.2113, 16.3765],
+        // Northwest along Donaukanal (Franz-Josefs-Kai)
+        [48.2118, 16.3752],
+        [48.2124, 16.3740],
+        [48.2130, 16.3728],
+        [48.2136, 16.3718],
+        [48.2142, 16.3708],
+        [48.2148, 16.3698],
+        [48.2152, 16.3690],
+        // Schottenring area
+        [48.2155, 16.3682],
+        [48.2158, 16.3672],
+        [48.2160, 16.3662],
+        // Turn south along the Ring
+        [48.2158, 16.3650],
+        [48.2152, 16.3640],
+        [48.2145, 16.3632],
+        // Near Börse / Schottentor
+        [48.2138, 16.3625],
+        [48.2130, 16.3618],
+        // Continue south along Universitätsring / Dr.-Karl-Lueger-Ring
+        [48.2122, 16.3612],
+        [48.2115, 16.3608],
+        // Near Rathaus
+        [48.2108, 16.3605],
+        [48.2100, 16.3602],
+        // Near Parliament
+        [48.2092, 16.3600],
+        [48.2085, 16.3602],
+        // Near Volksgarten
+        [48.2078, 16.3605],
+        [48.2072, 16.3608],
+        // Burgring
+        [48.2065, 16.3612],
+        [48.2060, 16.3618],
+        // Heldenplatz turn
+        [48.2058, 16.3625],
+        [48.2055, 16.3635],
+        // South along Babenbergerstraße toward Museumsquartier
+        [48.2050, 16.3645],
+        [48.2045, 16.3652],
+        [48.2040, 16.3660],
+        // Near Museumsquartier
+        [48.2035, 16.3665],
+        [48.2030, 16.3668],
+        // Heading east along Getreidemarkt / Operngasse
+        [48.2028, 16.3678],
+        [48.2025, 16.3690],
+        [48.2022, 16.3702],
+        // Near Karlsplatz / Oper
+        [48.2020, 16.3715],
+        [48.2022, 16.3728],
+        // North along Kärntner Ring / Opernring
+        [48.2025, 16.3718],
+        [48.2030, 16.3708],
+        [48.2035, 16.3698],
+        // Back along Opernring heading north
+        [48.2040, 16.3688],
+        [48.2045, 16.3678],
+        [48.2050, 16.3665],
+        // Back toward Heldenplatz
+        [48.2055, 16.3652],
+        [48.2058, 16.3640],
+        [48.2060, 16.3628],
+        [48.2063, 16.3618],
+        // Finish area - Heldenplatz
+        [48.2065, 16.3612],
+        [48.2068, 16.3608],
+        [48.2070, 16.3610]
+    ];
+
+    // ============================================================
+    //  Utility functions
+    // ============================================================
+    const DEG2RAD = Math.PI / 180;
+    const RAD2DEG = 180 / Math.PI;
+
+    /** Haversine distance in meters between two [lat,lng] points */
+    function haversine(a, b) {
+        const dLat = (b[0] - a[0]) * DEG2RAD;
+        const dLng = (b[1] - a[1]) * DEG2RAD;
+        const sinLat = Math.sin(dLat / 2);
+        const sinLng = Math.sin(dLng / 2);
+        const h = sinLat * sinLat + Math.cos(a[0] * DEG2RAD) * Math.cos(b[0] * DEG2RAD) * sinLng * sinLng;
+        return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    }
+
+    /** Bearing in degrees from point a to point b */
+    function bearing(a, b) {
+        const dLng = (b[1] - a[1]) * DEG2RAD;
+        const lat1 = a[0] * DEG2RAD;
+        const lat2 = b[0] * DEG2RAD;
+        const y = Math.sin(dLng) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+        return ((Math.atan2(y, x) * RAD2DEG) + 360) % 360;
+    }
+
+    /** Wind component along running direction (positive = tailwind, negative = headwind) */
+    function windComponent(windSpeed, windDirFrom, runBearing) {
+        // Wind blows FROM windDirFrom, so it blows TO (windDirFrom + 180)
+        const windToRad = (windDirFrom + 180) * DEG2RAD;
+        const runRad = runBearing * DEG2RAD;
+        // Wind vector (direction wind is moving)
+        const wu = windSpeed * Math.sin(windToRad); // east component
+        const wv = windSpeed * Math.cos(windToRad); // north component
+        // Running direction unit vector
+        const ru = Math.sin(runRad);
+        const rv = Math.cos(runRad);
+        // Dot product = tailwind component
+        return wu * ru + wv * rv;
+    }
+
+    /** Compass direction name from degrees */
+    function compassDir(deg) {
+        const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+        return dirs[Math.round(deg / 22.5) % 16];
+    }
+
+    /** Interpolate color from red (headwind) through yellow to green (tailwind) */
+    function windColor(component, maxAbs) {
+        if (maxAbs === 0) return '#ffc107';
+        const t = Math.max(-1, Math.min(1, component / maxAbs)); // -1 to 1
+        if (t < 0) {
+            // Red to yellow: headwind
+            const f = 1 + t; // 0 to 1
+            const r = 233;
+            const g = Math.round(69 + (256 - 69) * f);
+            const b = Math.round(96 * f);
+            return `rgb(${r},${g},${b})`;
+        } else {
+            // Yellow to green: tailwind
+            const r = Math.round(255 * (1 - t));
+            const g = Math.round(175 + (76) * t);
+            const b = Math.round(7 + (73) * t);
+            return `rgb(${r},${g},${b})`;
+        }
+    }
+
+    // ============================================================
+    //  Map setup
+    // ============================================================
+    const map = L.map('map').setView([48.215, 16.400], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 18
+    }).addTo(map);
+
+    // Draw the basic track
+    const trackLine = L.polyline(TRACK, { color: '#4fc3f7', weight: 4, opacity: 0.6 }).addTo(map);
+    map.fitBounds(trackLine.getBounds().pad(0.1));
+
+    // Start & finish markers
+    L.marker(TRACK[0], {
+        icon: L.divIcon({ className: '', html: '<div style="background:#4caf50;color:white;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:bold;white-space:nowrap;">▶ START</div>', iconAnchor: [0, 10] })
+    }).addTo(map);
+    L.marker(TRACK[TRACK.length - 1], {
+        icon: L.divIcon({ className: '', html: '<div style="background:#e94560;color:white;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:bold;white-space:nowrap;">🏁 FINISH</div>', iconAnchor: [0, 10] })
+    }).addTo(map);
+
+    // ============================================================
+    //  Compute track distances
+    // ============================================================
+    let totalDistance = 0;
+    const segDist = []; // distance of each segment
+    const cumDist = [0]; // cumulative distance at each point
+    for (let i = 1; i < TRACK.length; i++) {
+        const d = haversine(TRACK[i - 1], TRACK[i]);
+        segDist.push(d);
+        totalDistance += d;
+        cumDist.push(totalDistance);
+    }
+    document.getElementById('track-dist').textContent = (totalDistance / 1000).toFixed(2) + ' km';
+
+    // ============================================================
+    //  Wind data fetching
+    // ============================================================
+    let windSegments = []; // colored polyline layers
+    let windMarker = null;
+
+    function setStatus(msg, isError) {
+        const el = document.getElementById('status');
+        el.textContent = msg;
+        el.className = 'status' + (isError ? ' error' : '');
+    }
+
+    async function fetchWind() {
+        const dateVal = document.getElementById('input-date').value;
+        const timeVal = document.getElementById('input-time').value;
+        if (!dateVal || !timeVal) { setStatus('Please set date and time.', true); return; }
+
+        const btn = document.getElementById('btn-fetch');
+        btn.disabled = true;
+        setStatus('Fetching wind forecast…');
+
+        // Center of the track
+        const centerLat = TRACK.reduce((s, p) => s + p[0], 0) / TRACK.length;
+        const centerLng = TRACK.reduce((s, p) => s + p[1], 0) / TRACK.length;
+
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&start_date=${dateVal}&end_date=${dateVal}&timezone=Europe%2FVienna`;
+
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+            const data = await resp.json();
+
+            // Find the hour matching the input time
+            const targetHour = parseInt(timeVal.split(':')[0], 10);
+            const times = data.hourly.time; // e.g. ["2026-04-19T00:00","2026-04-19T01:00",...]
+            let idx = -1;
+            for (let i = 0; i < times.length; i++) {
+                const h = parseInt(times[i].split('T')[1].split(':')[0], 10);
+                if (h === targetHour) { idx = i; break; }
+            }
+            if (idx === -1) throw new Error('Could not find matching hour in forecast data.');
+
+            const speed = data.hourly.wind_speed_10m[idx];
+            const dir = data.hourly.wind_direction_10m[idx];
+            const gust = data.hourly.wind_gusts_10m[idx];
+
+            applyWind(speed, dir, gust);
+            setStatus(`Forecast loaded for ${dateVal} ${timeVal}`);
+        } catch (err) {
+            setStatus('Error: ' + err.message, true);
+            console.error(err);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function applyWind(speed, dir, gust) {
+        // Update UI
+        document.getElementById('wind-card').style.display = '';
+        document.getElementById('result-card').style.display = '';
+        document.getElementById('profile-card').style.display = '';
+        document.getElementById('wind-speed').textContent = speed.toFixed(1);
+        document.getElementById('wind-dir').textContent = dir.toFixed(0);
+        document.getElementById('wind-from').textContent = compassDir(dir);
+        document.getElementById('wind-gust').textContent = gust ? gust.toFixed(1) : '–';
+
+        // Rotate arrow (arrow points in direction wind blows TO = dir + 180)
+        document.getElementById('arrow-poly').setAttribute('transform', `rotate(${(dir + 180) % 360},30,30)`);
+
+        // Clear old segments
+        windSegments.forEach(l => map.removeLayer(l));
+        windSegments = [];
+        if (windMarker) { map.removeLayer(windMarker); windMarker = null; }
+
+        // Remove base track styling
+        trackLine.setStyle({ opacity: 0 });
+
+        // Calculate wind component for each segment
+        const components = [];
+        for (let i = 0; i < TRACK.length - 1; i++) {
+            const bear = bearing(TRACK[i], TRACK[i + 1]);
+            const comp = windComponent(speed, dir, bear);
+            components.push(comp);
+        }
+
+        const maxAbs = Math.max(1, Math.max(...components.map(Math.abs)));
+
+        // Draw colored segments
+        for (let i = 0; i < components.length; i++) {
+            const color = windColor(components[i], maxAbs);
+            const seg = L.polyline([TRACK[i], TRACK[i + 1]], {
+                color: color, weight: 6, opacity: 0.9
+            }).addTo(map);
+            seg.bindTooltip(
+                `km ${(cumDist[i] / 1000).toFixed(1)}: ${components[i] > 0 ? '+' : ''}${components[i].toFixed(1)} km/h (${components[i] > 0.5 ? 'tailwind' : components[i] < -0.5 ? 'headwind' : 'crosswind'})`,
+                { sticky: true }
+            );
+            windSegments.push(seg);
+        }
+
+        // Path integral: weighted average
+        let integralSum = 0;
+        let headwindDist = 0;
+        let tailwindDist = 0;
+        let crosswindDist = 0;
+        let maxHeadwind = 0;
+        let maxTailwind = 0;
+
+        for (let i = 0; i < components.length; i++) {
+            integralSum += components[i] * segDist[i];
+            if (components[i] < -0.5) headwindDist += segDist[i];
+            else if (components[i] > 0.5) tailwindDist += segDist[i];
+            else crosswindDist += segDist[i];
+            if (components[i] < maxHeadwind) maxHeadwind = components[i];
+            if (components[i] > maxTailwind) maxTailwind = components[i];
+        }
+
+        const avgComponent = integralSum / totalDistance;
+
+        // Update results
+        const resultEl = document.getElementById('result-value');
+        resultEl.textContent = (avgComponent > 0 ? '+' : '') + avgComponent.toFixed(2) + ' km/h';
+        resultEl.className = 'result-big ' + (avgComponent > 0.3 ? 'result-positive' : avgComponent < -0.3 ? 'result-negative' : 'result-neutral');
+
+        document.getElementById('hw-pct').textContent = ((headwindDist / totalDistance) * 100).toFixed(1) + '%';
+        document.getElementById('tw-pct').textContent = ((tailwindDist / totalDistance) * 100).toFixed(1) + '%';
+        document.getElementById('cw-pct').textContent = ((crosswindDist / totalDistance) * 100).toFixed(1) + '%';
+        document.getElementById('max-hw').textContent = maxHeadwind.toFixed(1) + ' km/h';
+        document.getElementById('max-tw').textContent = '+' + maxTailwind.toFixed(1) + ' km/h';
+
+        // Draw wind direction indicator on map
+        const centerLat = TRACK.reduce((s, p) => s + p[0], 0) / TRACK.length;
+        const centerLng = TRACK.reduce((s, p) => s + p[1], 0) / TRACK.length;
+        const arrowHtml = `<div style="font-size:28px;transform:rotate(${dir}deg);text-shadow:0 0 6px rgba(0,0,0,0.8);">⬇</div>`;
+        windMarker = L.marker([centerLat, centerLng], {
+            icon: L.divIcon({ className: '', html: arrowHtml, iconSize: [30, 30], iconAnchor: [15, 15] }),
+            interactive: false
+        }).addTo(map);
+
+        // Draw profile chart
+        drawProfile(components, cumDist, maxAbs);
+    }
+
+    // ============================================================
+    //  Profile chart
+    // ============================================================
+    function drawProfile(components, cumDist, maxAbs) {
+        const canvas = document.getElementById('profile-canvas');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, W, H);
+
+        const midY = H / 2;
+
+        // Zero line
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, midY);
+        ctx.lineTo(W, midY);
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = '#666';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('Tailwind ↑', 4, 12);
+        ctx.fillText('Headwind ↓', 4, H - 4);
+        ctx.textAlign = 'right';
+        ctx.fillText('0 km', 4, midY - 3);
+
+        // Draw bars
+        const barW = W / components.length;
+        for (let i = 0; i < components.length; i++) {
+            const val = components[i];
+            const normVal = val / maxAbs; // -1 to 1
+            const barH = Math.abs(normVal) * (H / 2 - 10);
+            const x = (cumDist[i] / totalDistance) * W;
+            const w = Math.max(1, (segDist[i] / totalDistance) * W);
+            ctx.fillStyle = windColor(val, maxAbs);
+            if (val >= 0) {
+                ctx.fillRect(x, midY - barH, w, barH);
+            } else {
+                ctx.fillRect(x, midY, w, barH);
+            }
+        }
+
+        // Distance markers
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        for (let km = 5; km < totalDistance / 1000; km += 5) {
+            const x = (km * 1000 / totalDistance) * W;
+            ctx.fillText(km + 'km', x, midY + 12);
+            ctx.beginPath();
+            ctx.strokeStyle = '#333';
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, H);
+            ctx.stroke();
+        }
+    }
+
+    // ============================================================
+    //  Auto-fetch on load
+    // ============================================================
+    window.addEventListener('load', () => {
+        // Try to fetch wind data immediately
+        fetchWind();
+    });
+    </script>
+</body>
+</html>
