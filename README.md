@@ -4,7 +4,7 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 
 ## Features
 
-- **GPS Track**: Displays the approximate Vienna City Half Marathon route on an interactive Leaflet map
+- **GPS Track**: Loads the **official GPX track** from [vienna-marathon.com](https://www.vienna-marathon.com/var/upload/public/2026/WienerStaedtischeHalbmarathon.gpx) at runtime and displays it on an interactive Leaflet map
 - **Wind Forecast**: Fetches real-time wind forecasts from [Open-Meteo](https://open-meteo.com/) (free, no API key required)
 - **Heatmap Visualization**: Colors the track green (tailwind), red (headwind), or yellow (crosswind) based on wind direction relative to running direction
 - **Path Integral**: Computes the net wind effect over the entire track by integrating the wind component along the running direction
@@ -13,9 +13,10 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 ## How to Use
 
 1. Open `index.html` in any modern web browser
-2. Set the race date and start time (defaults to April 19, 2026 at 09:00)
-3. Click **"Load Wind Forecast"** to fetch the latest wind data
-4. Explore the heatmap on the map and review the path integral results
+2. The official GPX track is automatically loaded from vienna-marathon.com
+3. Set the race date and start time (defaults to April 19, 2026 at 09:00)
+4. Click **"Load Wind Forecast"** to fetch the latest wind data
+5. Explore the heatmap on the map and review the path integral results
 
 ## How it Works
 
@@ -41,3 +42,4 @@ avg_wind_effect = (1/D) × Σ (wind_component_i × segment_length_i)
 - [Leaflet.js](https://leafletjs.com/) for the interactive map
 - [Open-Meteo API](https://open-meteo.com/) for wind forecasts
 - [OpenStreetMap](https://www.openstreetmap.org/) for map tiles
+- Official GPX track from [Vienna City Marathon](https://www.vienna-marathon.com/)

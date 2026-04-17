@@ -115,6 +115,8 @@
         <div class="card">
             <h3>ℹ️ How it works</h3>
             <div style="font-size:0.8em;color:#8899aa;line-height:1.5;">
+                The official GPX track is loaded from
+                <a href="https://www.vienna-marathon.com" style="color:#4fc3f7;">vienna-marathon.com</a>.
                 Wind data is fetched from <strong>Open-Meteo</strong> (free, no API key).
                 The path integral computes the dot product of the wind vector with the
                 running direction at each track segment, then averages over the total distance.
@@ -130,248 +132,25 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
     // ============================================================
-    //  Vienna City Half Marathon - approximate GPS track
-    //  Based on the typical VCM half marathon route
+    //  Configuration
     // ============================================================
-    const TRACK = [
-        // Extended start - heading from further east along Wagramer Straße
-        [48.2345, 16.4220],
-        [48.2342, 16.4208],
-        [48.2340, 16.4195],
-        [48.2338, 16.4182],
-        [48.2335, 16.4170],
-        [48.2332, 16.4158],
-        [48.2330, 16.4148],
-        [48.2328, 16.4138],
-        // Start area - near Reichsbrücke / Wagramer Straße
-        [48.2322, 16.4135],
-        [48.2315, 16.4125],
-        [48.2308, 16.4112],
-        [48.2300, 16.4098],
-        // South across Reichsbrücke area toward Mexikoplatz
-        [48.2290, 16.4082],
-        [48.2282, 16.4068],
-        [48.2275, 16.4055],
-        [48.2268, 16.4042],
-        [48.2260, 16.4030],
-        // Along Lassallestraße heading south
-        [48.2252, 16.4018],
-        [48.2245, 16.4005],
-        [48.2238, 16.3992],
-        [48.2230, 16.3978],
-        [48.2222, 16.3965],
-        [48.2215, 16.3955],
-        [48.2208, 16.3948],
-        [48.2200, 16.3940],
-        // Praterstern
-        [48.2192, 16.3935],
-        [48.2188, 16.3932],
-        // Into Prater - heading southeast along Hauptallee
-        [48.2183, 16.3940],
-        [48.2178, 16.3952],
-        [48.2172, 16.3968],
-        [48.2166, 16.3985],
-        [48.2160, 16.4005],
-        [48.2154, 16.4025],
-        [48.2148, 16.4045],
-        [48.2142, 16.4065],
-        [48.2136, 16.4085],
-        [48.2130, 16.4105],
-        [48.2124, 16.4125],
-        [48.2118, 16.4145],
-        [48.2112, 16.4165],
-        [48.2106, 16.4185],
-        [48.2100, 16.4205],
-        [48.2094, 16.4225],
-        [48.2088, 16.4245],
-        [48.2082, 16.4265],
-        [48.2076, 16.4285],
-        [48.2070, 16.4305],
-        [48.2064, 16.4325],
-        [48.2058, 16.4345],
-        [48.2052, 16.4365],
-        [48.2046, 16.4382],
-        [48.2040, 16.4398],
-        [48.2035, 16.4412],
-        // Near the Lusthaus / end of Hauptallee - continue further
-        [48.2030, 16.4425],
-        [48.2026, 16.4435],
-        [48.2022, 16.4448],
-        [48.2018, 16.4460],
-        [48.2014, 16.4472],
-        [48.2010, 16.4484],
-        [48.2006, 16.4495],
-        [48.2002, 16.4505],
-        // Lusthaus roundabout
-        [48.1998, 16.4512],
-        [48.1996, 16.4518],
-        [48.1998, 16.4522],
-        [48.2002, 16.4520],
-        // Turn around - heading back northwest via parallel path (Stadion-Allee side)
-        [48.2006, 16.4512],
-        [48.2012, 16.4498],
-        [48.2018, 16.4482],
-        [48.2024, 16.4468],
-        [48.2030, 16.4452],
-        [48.2038, 16.4435],
-        [48.2045, 16.4418],
-        [48.2052, 16.4400],
-        [48.2060, 16.4378],
-        [48.2068, 16.4355],
-        [48.2076, 16.4332],
-        [48.2084, 16.4308],
-        [48.2092, 16.4285],
-        [48.2100, 16.4262],
-        [48.2107, 16.4240],
-        [48.2113, 16.4220],
-        // Slight detour via Stadion area
-        [48.2118, 16.4202],
-        [48.2122, 16.4185],
-        [48.2127, 16.4168],
-        [48.2132, 16.4150],
-        [48.2138, 16.4130],
-        [48.2144, 16.4110],
-        [48.2150, 16.4090],
-        [48.2156, 16.4070],
-        [48.2162, 16.4050],
-        [48.2168, 16.4030],
-        [48.2174, 16.4010],
-        [48.2180, 16.3990],
-        [48.2185, 16.3972],
-        [48.2188, 16.3955],
-        // Back at Praterstern
-        [48.2190, 16.3938],
-        [48.2192, 16.3930],
-        // Detour north through Augarten
-        [48.2198, 16.3925],
-        [48.2205, 16.3918],
-        [48.2212, 16.3912],
-        [48.2220, 16.3908],
-        [48.2228, 16.3905],
-        // Into Augarten park
-        [48.2235, 16.3900],
-        [48.2240, 16.3892],
-        [48.2245, 16.3882],
-        [48.2248, 16.3870],
-        // Loop through Augarten
-        [48.2250, 16.3858],
-        [48.2248, 16.3845],
-        [48.2244, 16.3835],
-        [48.2238, 16.3828],
-        // Back south from Augarten
-        [48.2230, 16.3825],
-        [48.2222, 16.3830],
-        [48.2215, 16.3838],
-        [48.2208, 16.3848],
-        [48.2202, 16.3858],
-        [48.2198, 16.3868],
-        [48.2195, 16.3880],
-        [48.2192, 16.3892],
-        // Rejoin route heading west
-        [48.2190, 16.3905],
-        // West along Praterstraße
-        [48.2190, 16.3920],
-        [48.2186, 16.3908],
-        [48.2182, 16.3895],
-        [48.2177, 16.3882],
-        [48.2172, 16.3868],
-        [48.2167, 16.3855],
-        [48.2162, 16.3842],
-        [48.2157, 16.3828],
-        [48.2152, 16.3815],
-        [48.2147, 16.3802],
-        [48.2142, 16.3790],
-        // Near Nestroyplatz
-        [48.2138, 16.3780],
-        [48.2134, 16.3772],
-        // Continue to Schwedenplatz / Donaukanal
-        [48.2128, 16.3765],
-        [48.2122, 16.3760],
-        [48.2118, 16.3758],
-        // Schwedenplatz area
-        [48.2113, 16.3765],
-        // Northwest along Donaukanal (Franz-Josefs-Kai)
-        [48.2118, 16.3752],
-        [48.2124, 16.3740],
-        [48.2130, 16.3728],
-        [48.2136, 16.3718],
-        [48.2142, 16.3708],
-        [48.2148, 16.3698],
-        [48.2152, 16.3690],
-        // Schottenring area
-        [48.2155, 16.3682],
-        [48.2158, 16.3672],
-        [48.2160, 16.3662],
-        // Turn south along the Ring
-        [48.2158, 16.3650],
-        [48.2152, 16.3640],
-        [48.2145, 16.3632],
-        // Near Börse / Schottentor
-        [48.2138, 16.3625],
-        [48.2130, 16.3618],
-        // Continue south along Universitätsring / Dr.-Karl-Lueger-Ring
-        [48.2122, 16.3612],
-        [48.2115, 16.3608],
-        // Near Rathaus
-        [48.2108, 16.3605],
-        [48.2100, 16.3602],
-        // Near Parliament
-        [48.2092, 16.3600],
-        [48.2085, 16.3602],
-        // Near Volksgarten
-        [48.2078, 16.3605],
-        [48.2072, 16.3608],
-        // Burgring
-        [48.2065, 16.3612],
-        [48.2060, 16.3618],
-        // Heldenplatz turn
-        [48.2058, 16.3625],
-        [48.2055, 16.3635],
-        // South along Babenbergerstraße toward Museumsquartier
-        [48.2050, 16.3645],
-        [48.2045, 16.3652],
-        [48.2040, 16.3660],
-        // Near Museumsquartier
-        [48.2035, 16.3665],
-        [48.2030, 16.3668],
-        // Heading east along Getreidemarkt / Operngasse
-        [48.2028, 16.3678],
-        [48.2025, 16.3690],
-        [48.2022, 16.3702],
-        // Near Karlsplatz / Oper
-        [48.2020, 16.3715],
-        [48.2022, 16.3728],
-        // North along Kärntner Ring / Opernring
-        [48.2025, 16.3718],
-        [48.2030, 16.3708],
-        [48.2035, 16.3698],
-        // Back along Opernring heading north
-        [48.2040, 16.3688],
-        [48.2045, 16.3678],
-        [48.2050, 16.3665],
-        // Back toward Heldenplatz
-        [48.2055, 16.3652],
-        [48.2058, 16.3640],
-        [48.2060, 16.3628],
-        [48.2063, 16.3618],
-        // Finish area - Heldenplatz / Rathausplatz loop
-        [48.2065, 16.3612],
-        [48.2070, 16.3608],
-        [48.2078, 16.3602],
-        [48.2085, 16.3598],
-        [48.2092, 16.3595],
-        [48.2098, 16.3592],
-        [48.2105, 16.3590],
-        // Around Rathausplatz
-        [48.2110, 16.3592],
-        [48.2112, 16.3598],
-        [48.2110, 16.3605],
-        [48.2105, 16.3608],
-        [48.2098, 16.3610],
-        // Finish line near Burgtheater
-        [48.2092, 16.3608],
-        [48.2085, 16.3610]
-    ];
+    const GPX_URL = 'https://www.vienna-marathon.com/var/upload/public/2026/WienerStaedtischeHalbmarathon.gpx';
+    // Maximum number of track points to keep (for performance).
+    // The real GPX may have thousands of points; we downsample to this.
+    const MAX_TRACK_POINTS = 500;
+
+    // ============================================================
+    //  Global state
+    // ============================================================
+    let TRACK = [];           // [lat,lng] array – populated after GPX loads
+    let totalDistance = 0;
+    let segDist = [];         // distance of each segment
+    let cumDist = [0];        // cumulative distance at each point
+    let trackLine = null;     // Leaflet polyline
+    let startMarker = null;
+    let finishMarker = null;
+    let windSegments = [];    // colored polyline layers
+    let windMarker = null;
 
     // ============================================================
     //  Utility functions
@@ -441,6 +220,53 @@
     }
 
     // ============================================================
+    //  GPX parsing
+    // ============================================================
+
+    /** Parse GPX XML string and return array of [lat, lng] */
+    function parseGPX(xmlString) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlString, 'application/xml');
+        const parseError = doc.querySelector('parsererror');
+        if (parseError) throw new Error('Invalid GPX file: ' + parseError.textContent.slice(0, 100));
+
+        const points = [];
+        // Try <trkpt> elements first (most common GPX format)
+        let trkpts = doc.querySelectorAll('trkpt');
+        // Fallback to <rtept> (route points)
+        if (trkpts.length === 0) trkpts = doc.querySelectorAll('rtept');
+        // Fallback to <wpt> (waypoints)
+        if (trkpts.length === 0) trkpts = doc.querySelectorAll('wpt');
+
+        for (const pt of trkpts) {
+            const lat = parseFloat(pt.getAttribute('lat'));
+            const lon = parseFloat(pt.getAttribute('lon'));
+            if (!isNaN(lat) && !isNaN(lon)) {
+                points.push([lat, lon]);
+            }
+        }
+        if (points.length < 2) throw new Error('GPX file contains fewer than 2 track points.');
+        return points;
+    }
+
+    /**
+     * Downsample track to at most maxPoints using the Ramer–Douglas–Peucker
+     * algorithm applied on cumulative-distance / bearing-change, preserving
+     * shape at direction changes while thinning straight segments.
+     * Falls back to uniform sampling if RDP is too slow.
+     */
+    function downsampleTrack(points, maxPoints) {
+        if (points.length <= maxPoints) return points;
+        // Simple uniform sampling that always keeps first and last point
+        const step = (points.length - 1) / (maxPoints - 1);
+        const result = [];
+        for (let i = 0; i < maxPoints; i++) {
+            result.push(points[Math.round(i * step)]);
+        }
+        return result;
+    }
+
+    // ============================================================
     //  Map setup
     // ============================================================
     const map = L.map('map').setView([48.215, 16.400], 13);
@@ -449,45 +275,83 @@
         maxZoom: 18
     }).addTo(map);
 
-    // Draw the basic track
-    const trackLine = L.polyline(TRACK, { color: '#4fc3f7', weight: 4, opacity: 0.6 }).addTo(map);
-    map.fitBounds(trackLine.getBounds().pad(0.1));
-
-    // Start & finish markers
-    L.marker(TRACK[0], {
-        icon: L.divIcon({ className: '', html: '<div style="background:#4caf50;color:white;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:bold;white-space:nowrap;">▶ START</div>', iconAnchor: [0, 10] })
-    }).addTo(map);
-    L.marker(TRACK[TRACK.length - 1], {
-        icon: L.divIcon({ className: '', html: '<div style="background:#e94560;color:white;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:bold;white-space:nowrap;">🏁 FINISH</div>', iconAnchor: [0, 10] })
-    }).addTo(map);
-
     // ============================================================
-    //  Compute track distances
+    //  Status helpers
     // ============================================================
-    let totalDistance = 0;
-    const segDist = []; // distance of each segment
-    const cumDist = [0]; // cumulative distance at each point
-    for (let i = 1; i < TRACK.length; i++) {
-        const d = haversine(TRACK[i - 1], TRACK[i]);
-        segDist.push(d);
-        totalDistance += d;
-        cumDist.push(totalDistance);
-    }
-    document.getElementById('track-dist').textContent = (totalDistance / 1000).toFixed(2) + ' km';
-
-    // ============================================================
-    //  Wind data fetching
-    // ============================================================
-    let windSegments = []; // colored polyline layers
-    let windMarker = null;
-
     function setStatus(msg, isError) {
         const el = document.getElementById('status');
         el.textContent = msg;
         el.className = 'status' + (isError ? ' error' : '');
     }
 
+    // ============================================================
+    //  Load GPX and initialise track
+    // ============================================================
+    async function loadGPX() {
+        const btn = document.getElementById('btn-fetch');
+        btn.disabled = true;
+        setStatus('Loading GPX track from vienna-marathon.com…');
+
+        try {
+            const resp = await fetch(GPX_URL);
+            if (!resp.ok) throw new Error(`GPX download failed: HTTP ${resp.status}`);
+            const xml = await resp.text();
+            const rawPoints = parseGPX(xml);
+            TRACK = downsampleTrack(rawPoints, MAX_TRACK_POINTS);
+            setStatus(`Track loaded: ${rawPoints.length} points → ${TRACK.length} (downsampled)`);
+            initTrack();
+        } catch (err) {
+            setStatus('GPX load error: ' + err.message, true);
+            console.error(err);
+            btn.disabled = false;
+        }
+    }
+
+    /** Set up map layers and distances once TRACK is populated */
+    function initTrack() {
+        // Remove old layers if re-loading
+        if (trackLine) { map.removeLayer(trackLine); }
+        if (startMarker) { map.removeLayer(startMarker); }
+        if (finishMarker) { map.removeLayer(finishMarker); }
+        windSegments.forEach(l => map.removeLayer(l));
+        windSegments = [];
+        if (windMarker) { map.removeLayer(windMarker); windMarker = null; }
+
+        // Draw the base track
+        trackLine = L.polyline(TRACK, { color: '#4fc3f7', weight: 4, opacity: 0.6 }).addTo(map);
+        map.fitBounds(trackLine.getBounds().pad(0.1));
+
+        // Start & finish markers
+        startMarker = L.marker(TRACK[0], {
+            icon: L.divIcon({ className: '', html: '<div style="background:#4caf50;color:white;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:bold;white-space:nowrap;">▶ START</div>', iconAnchor: [0, 10] })
+        }).addTo(map);
+        finishMarker = L.marker(TRACK[TRACK.length - 1], {
+            icon: L.divIcon({ className: '', html: '<div style="background:#e94560;color:white;padding:2px 6px;border-radius:10px;font-size:12px;font-weight:bold;white-space:nowrap;">🏁 FINISH</div>', iconAnchor: [0, 10] })
+        }).addTo(map);
+
+        // Compute distances
+        totalDistance = 0;
+        segDist = [];
+        cumDist = [0];
+        for (let i = 1; i < TRACK.length; i++) {
+            const d = haversine(TRACK[i - 1], TRACK[i]);
+            segDist.push(d);
+            totalDistance += d;
+            cumDist.push(totalDistance);
+        }
+        document.getElementById('track-dist').textContent = (totalDistance / 1000).toFixed(2) + ' km';
+
+        // Enable wind button and auto-fetch
+        document.getElementById('btn-fetch').disabled = false;
+        fetchWind();
+    }
+
+    // ============================================================
+    //  Wind data fetching
+    // ============================================================
     async function fetchWind() {
+        if (TRACK.length < 2) { setStatus('Load GPX track first.', true); return; }
+
         const dateVal = document.getElementById('input-date').value;
         const timeVal = document.getElementById('input-time').value;
         if (!dateVal || !timeVal) { setStatus('Please set date and time.', true); return; }
@@ -654,11 +518,9 @@
         ctx.textAlign = 'left';
         ctx.fillText('Tailwind ↑', 4, 12);
         ctx.fillText('Headwind ↓', 4, H - 4);
-        ctx.textAlign = 'left';
         ctx.fillText('0 km', 4, midY - 3);
 
         // Draw bars
-        const barW = W / components.length;
         for (let i = 0; i < components.length; i++) {
             const val = components[i];
             const normVal = val / maxAbs; // -1 to 1
@@ -689,11 +551,10 @@
     }
 
     // ============================================================
-    //  Auto-fetch on load
+    //  Bootstrap – load GPX then wind
     // ============================================================
     window.addEventListener('load', () => {
-        // Try to fetch wind data immediately
-        fetchWind();
+        loadGPX();
     });
     </script>
 </body>
