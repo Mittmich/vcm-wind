@@ -6,6 +6,7 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 
 - **GPS Track**: Loads the **GPX track** (`WienerStaedtischeHalbmarathon.gpx`) and displays it on an interactive Leaflet map
 - **Wind Forecast**: Fetches real-time wind forecasts from [Open-Meteo](https://open-meteo.com/) (free, no API key required)
+- **Time-Varying Wind**: Specify your expected runtime and the tool accounts for wind changes during the race by interpolating hourly forecasts based on your pace
 - **Heatmap Visualization**: Colors the track green (tailwind), red (headwind), or yellow (crosswind) based on wind direction relative to running direction
 - **Path Integral**: Computes the net wind effect over the entire track by integrating the wind component along the running direction
 - **Wind Profile Chart**: Shows headwind/tailwind intensity along the track distance
@@ -15,8 +16,9 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 1. Open `index.html` in any modern web browser
 2. The GPX track is automatically loaded from the local `WienerStaedtischeHalbmarathon.gpx` file
 3. Set the race date and start time (defaults to April 19, 2026 at 09:00)
-4. Click **"Load Wind Forecast"** to fetch the latest wind data
-5. Explore the heatmap on the map and review the path integral results
+4. Set your expected runtime (defaults to 1:45 for a half marathon)
+5. Click **"Load Wind Forecast"** to fetch the latest wind data
+6. Explore the heatmap on the map and review the path integral results
 
 ## How it Works
 
@@ -26,7 +28,12 @@ The tool computes the dot product of the wind vector with the running direction 
 wind_component = wind_speed × cos(wind_direction_to − running_bearing)
 ```
 
-The **path integral** averages this component over the total distance:
+**Time-varying wind:** When a runtime is specified, the tool assumes a constant pace and
+interpolates hourly wind forecasts for each track segment based on when the runner would
+reach that point. Wind speed is linearly interpolated and wind direction is interpolated
+along the shortest angular arc.
+
+The **path integral** averages the wind component over the total distance:
 
 ```
 avg_wind_effect = (1/D) × Σ (wind_component_i × segment_length_i)

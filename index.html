@@ -60,6 +60,8 @@
                 <input type="date" id="input-date" value="2026-04-19" style="flex:1;">
                 <input type="time" id="input-time" value="09:00" style="width:100px;">
             </div>
+            <label>Expected Runtime (h:mm)</label>
+            <input type="text" id="input-runtime" value="1:45" placeholder="e.g. 1:45" style="width:100px;">
             <button class="btn" id="btn-fetch" onclick="fetchWind()">🌬️ Load Wind Forecast</button>
             <div class="status" id="status"></div>
         </div>
@@ -82,6 +84,27 @@
                     Direction: <span id="wind-dir">–</span>°<br>
                     From: <span id="wind-from">–</span><br>
                     Gusts: <span id="wind-gust">–</span> km/h
+                </div>
+            </div>
+            <div id="wind-end-block" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #0f3460;">
+                <h3 style="margin-bottom:8px;">🏁 Wind Conditions at Finish</h3>
+                <div class="wind-display">
+                    <div class="wind-arrow">
+                        <svg viewBox="0 0 60 60">
+                            <circle cx="30" cy="30" r="28" fill="none" stroke="#0f3460" stroke-width="1"/>
+                            <text x="30" y="10" text-anchor="middle" fill="#8899aa" font-size="8">N</text>
+                            <text x="55" y="33" text-anchor="middle" fill="#8899aa" font-size="8">E</text>
+                            <text x="30" y="56" text-anchor="middle" fill="#8899aa" font-size="8">S</text>
+                            <text x="5" y="33" text-anchor="middle" fill="#8899aa" font-size="8">W</text>
+                            <polygon id="arrow-poly-end" points="30,8 24,38 30,32 36,38" fill="#4fc3f7" transform="rotate(0,30,30)"/>
+                        </svg>
+                    </div>
+                    <div class="wind-stats">
+                        Speed: <span id="wind-speed-end">–</span> km/h<br>
+                        Direction: <span id="wind-dir-end">–</span>°<br>
+                        From: <span id="wind-from-end">–</span><br>
+                        Gusts: <span id="wind-gust-end">–</span> km/h
+                    </div>
                 </div>
             </div>
         </div>
@@ -117,6 +140,8 @@
             <div style="font-size:0.8em;color:#8899aa;line-height:1.5;">
                 The GPX track is loaded from a local file included in this repository.
                 Wind data is fetched from <strong>Open-Meteo</strong> (free, no API key).
+                Specify your expected runtime so that wind changes during the race are
+                accounted for – the tool interpolates hourly forecasts based on your pace.
                 The path integral computes the dot product of the wind vector with the
                 running direction at each track segment, then averages over the total distance.
                 Positive = net tailwind, Negative = net headwind.
@@ -196,6 +221,46 @@
     function compassDir(deg) {
         const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
         return dirs[Math.round(deg / 22.5) % 16];
+    }
+
+    /** Parse runtime string "h:mm" or "m" into minutes */
+    function parseRuntime(str) {
+        str = str.trim();
+        if (str.includes(':')) {
+            const parts = str.split(':');
+            const h = parseInt(parts[0], 10) || 0;
+            const m = parseInt(parts[1], 10) || 0;
+            return h * 60 + m;
+        }
+        return parseInt(str, 10) || 0;
+    }
+
+    /**
+     * Interpolate wind values at a given fractional hour offset from the start hour.
+     * windHours is an array of { speed, dir, gust } for consecutive hours.
+     * offsetHours is the elapsed time in hours from the first entry.
+     * Directions are interpolated via shortest angular path.
+     */
+    function interpolateWind(windHours, offsetHours) {
+        if (windHours.length === 1 || offsetHours <= 0) return windHours[0];
+        if (offsetHours >= windHours.length - 1) return windHours[windHours.length - 1];
+
+        const idx = Math.floor(offsetHours);
+        const frac = offsetHours - idx;
+        const a = windHours[idx];
+        const b = windHours[idx + 1];
+
+        // Linearly interpolate speed and gust
+        const speed = a.speed + (b.speed - a.speed) * frac;
+        const gust  = a.gust  + (b.gust  - a.gust)  * frac;
+
+        // Interpolate direction on shortest arc
+        let dDir = b.dir - a.dir;
+        if (dDir > 180) dDir -= 360;
+        if (dDir < -180) dDir += 360;
+        const dir = ((a.dir + dDir * frac) + 360) % 360;
+
+        return { speed, dir, gust };
     }
 
     /** Interpolate color from red (headwind) through yellow to green (tailwind) */
@@ -356,42 +421,59 @@
 
         const dateVal = document.getElementById('input-date').value;
         const timeVal = document.getElementById('input-time').value;
+        const runtimeStr = document.getElementById('input-runtime').value;
         if (!dateVal || !timeVal) { setStatus('Please set date and time.', true); return; }
+
+        const runtimeMinutes = parseRuntime(runtimeStr);
+        if (runtimeMinutes <= 0) { setStatus('Please enter a valid runtime (e.g. 1:45).', true); return; }
 
         const btn = document.getElementById('btn-fetch');
         btn.disabled = true;
         setStatus('Fetching wind forecast…');
 
         // Center of the track for wind data fetch
-        // Note: For a city-scale route (~5km span), Open-Meteo grid resolution
-        // means wind values are nearly identical across the track. The meaningful
-        // variation comes from changing running direction relative to wind.
         const centerLat = TRACK.reduce((s, p) => s + p[0], 0) / TRACK.length;
         const centerLng = TRACK.reduce((s, p) => s + p[1], 0) / TRACK.length;
 
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&start_date=${dateVal}&end_date=${dateVal}&timezone=Europe%2FVienna`;
+        // Determine date range – runtime might span midnight
+        const startDate = new Date(`${dateVal}T${timeVal}:00`);
+        const endDate = new Date(startDate.getTime() + runtimeMinutes * 60000);
+        const startDateStr = dateVal;
+        const endDateStr = endDate.toISOString().slice(0, 10);
+
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&start_date=${startDateStr}&end_date=${endDateStr}&timezone=Europe%2FVienna`;
 
         try {
             const resp = await fetch(url);
             if (!resp.ok) throw new Error(`API error: ${resp.status}`);
             const data = await resp.json();
 
-            // Find the hour matching the input time
+            // Find the starting hour index
             const targetHour = parseInt(timeVal.split(':')[0], 10);
-            const times = data.hourly.time; // e.g. ["2026-04-19T00:00","2026-04-19T01:00",...]
-            let idx = -1;
+            const times = data.hourly.time;
+            let startIdx = -1;
             for (let i = 0; i < times.length; i++) {
                 const h = parseInt(times[i].split('T')[1].split(':')[0], 10);
-                if (h === targetHour) { idx = i; break; }
+                const d = times[i].split('T')[0];
+                if (h === targetHour && d === startDateStr) { startIdx = i; break; }
             }
-            if (idx === -1) throw new Error('Could not find matching hour in forecast data.');
+            if (startIdx === -1) throw new Error('Could not find matching hour in forecast data.');
 
-            const speed = data.hourly.wind_speed_10m[idx];
-            const dir = data.hourly.wind_direction_10m[idx];
-            const gust = data.hourly.wind_gusts_10m[idx];
+            // Collect hourly wind data for the runtime duration + 1 hour (for interpolation)
+            const hoursNeeded = Math.ceil(runtimeMinutes / 60) + 1;
+            const windHours = [];
+            for (let i = 0; i < hoursNeeded && (startIdx + i) < times.length; i++) {
+                const j = startIdx + i;
+                windHours.push({
+                    speed: data.hourly.wind_speed_10m[j],
+                    dir:   data.hourly.wind_direction_10m[j],
+                    gust:  data.hourly.wind_gusts_10m[j]
+                });
+            }
+            if (windHours.length === 0) throw new Error('No wind data available for the specified time.');
 
-            applyWind(speed, dir, gust);
-            setStatus(`Forecast loaded for ${dateVal} ${timeVal}`);
+            applyWind(windHours, runtimeMinutes);
+            setStatus(`Forecast loaded for ${dateVal} ${timeVal} (runtime ${runtimeStr})`);
         } catch (err) {
             setStatus('Error: ' + err.message, true);
             console.error(err);
@@ -400,18 +482,34 @@
         }
     }
 
-    function applyWind(speed, dir, gust) {
-        // Update UI
+    function applyWind(windHours, runtimeMinutes) {
+        const startWind = windHours[0];
+        const runtimeHours = runtimeMinutes / 60;
+        const endWind = interpolateWind(windHours, runtimeHours);
+
+        // Update start-of-race wind UI
         document.getElementById('wind-card').style.display = '';
         document.getElementById('result-card').style.display = '';
         document.getElementById('profile-card').style.display = '';
-        document.getElementById('wind-speed').textContent = speed.toFixed(1);
-        document.getElementById('wind-dir').textContent = dir.toFixed(0);
-        document.getElementById('wind-from').textContent = compassDir(dir);
-        document.getElementById('wind-gust').textContent = gust ? gust.toFixed(1) : '–';
+        document.getElementById('wind-speed').textContent = startWind.speed.toFixed(1);
+        document.getElementById('wind-dir').textContent = startWind.dir.toFixed(0);
+        document.getElementById('wind-from').textContent = compassDir(startWind.dir);
+        document.getElementById('wind-gust').textContent = startWind.gust ? startWind.gust.toFixed(1) : '–';
+        document.getElementById('arrow-poly').setAttribute('transform', `rotate(${(startWind.dir + 180) % 360},30,30)`);
 
-        // Rotate arrow (arrow points in direction wind blows TO = dir + 180)
-        document.getElementById('arrow-poly').setAttribute('transform', `rotate(${(dir + 180) % 360},30,30)`);
+        // Update end-of-race wind UI (show only if wind actually varies)
+        const windChanges = windHours.length > 1;
+        const endBlock = document.getElementById('wind-end-block');
+        if (windChanges) {
+            endBlock.style.display = '';
+            document.getElementById('wind-speed-end').textContent = endWind.speed.toFixed(1);
+            document.getElementById('wind-dir-end').textContent = endWind.dir.toFixed(0);
+            document.getElementById('wind-from-end').textContent = compassDir(endWind.dir);
+            document.getElementById('wind-gust-end').textContent = endWind.gust ? endWind.gust.toFixed(1) : '–';
+            document.getElementById('arrow-poly-end').setAttribute('transform', `rotate(${(endWind.dir + 180) % 360},30,30)`);
+        } else {
+            endBlock.style.display = 'none';
+        }
 
         // Clear old segments
         windSegments.forEach(l => map.removeLayer(l));
@@ -421,11 +519,15 @@
         // Remove base track styling
         trackLine.setStyle({ opacity: 0 });
 
-        // Calculate wind component for each segment
+        // Calculate wind component for each segment with time-varying wind
+        // Assume constant pace: elapsed time is proportional to distance covered
         const components = [];
         for (let i = 0; i < TRACK.length - 1; i++) {
+            const fracDist = cumDist[i] / totalDistance; // 0 to 1
+            const elapsedHours = fracDist * runtimeHours;
+            const wind = interpolateWind(windHours, elapsedHours);
             const bear = bearing(TRACK[i], TRACK[i + 1]);
-            const comp = windComponent(speed, dir, bear);
+            const comp = windComponent(wind.speed, wind.dir, bear);
             components.push(comp);
         }
 
@@ -434,11 +536,13 @@
         // Draw colored segments
         for (let i = 0; i < components.length; i++) {
             const color = windColor(components[i], maxAbs);
+            const fracDist = cumDist[i] / totalDistance;
+            const elapsedMin = (fracDist * runtimeMinutes).toFixed(0);
             const seg = L.polyline([TRACK[i], TRACK[i + 1]], {
                 color: color, weight: 6, opacity: 0.9
             }).addTo(map);
             seg.bindTooltip(
-                `km ${(cumDist[i] / 1000).toFixed(1)}: ${components[i] > 0 ? '+' : ''}${components[i].toFixed(1)} km/h (${components[i] > 0.5 ? 'tailwind' : components[i] < -0.5 ? 'headwind' : 'crosswind'})`,
+                `km ${(cumDist[i] / 1000).toFixed(1)} (~${elapsedMin} min): ${components[i] > 0 ? '+' : ''}${components[i].toFixed(1)} km/h (${components[i] > 0.5 ? 'tailwind' : components[i] < -0.5 ? 'headwind' : 'crosswind'})`,
                 { sticky: true }
             );
             windSegments.push(seg);
@@ -474,10 +578,10 @@
         document.getElementById('max-hw').textContent = maxHeadwind.toFixed(1) + ' km/h';
         document.getElementById('max-tw').textContent = '+' + maxTailwind.toFixed(1) + ' km/h';
 
-        // Draw wind direction indicator on map
+        // Draw wind direction indicator on map (use start wind)
         const centerLat = TRACK.reduce((s, p) => s + p[0], 0) / TRACK.length;
         const centerLng = TRACK.reduce((s, p) => s + p[1], 0) / TRACK.length;
-        const arrowHtml = `<div style="font-size:28px;transform:rotate(${dir}deg);text-shadow:0 0 6px rgba(0,0,0,0.8);">⬇</div>`;
+        const arrowHtml = `<div style="font-size:28px;transform:rotate(${startWind.dir}deg);text-shadow:0 0 6px rgba(0,0,0,0.8);">⬇</div>`;
         windMarker = L.marker([centerLat, centerLng], {
             icon: L.divIcon({ className: '', html: arrowHtml, iconSize: [30, 30], iconAnchor: [15, 15] }),
             interactive: false
