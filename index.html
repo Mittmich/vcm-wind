@@ -496,7 +496,10 @@
         btn.disabled = true;
         setStatus('Fetching wind forecast…');
 
-        // Center of the track
+        // Center of the track for wind data fetch
+        // Note: For a city-scale route (~5km span), Open-Meteo grid resolution
+        // means wind values are nearly identical across the track. The meaningful
+        // variation comes from changing running direction relative to wind.
         const centerLat = TRACK.reduce((s, p) => s + p[0], 0) / TRACK.length;
         const centerLng = TRACK.reduce((s, p) => s + p[1], 0) / TRACK.length;
 
@@ -651,7 +654,7 @@
         ctx.textAlign = 'left';
         ctx.fillText('Tailwind ↑', 4, 12);
         ctx.fillText('Headwind ↓', 4, H - 4);
-        ctx.textAlign = 'right';
+        ctx.textAlign = 'left';
         ctx.fillText('0 km', 4, midY - 3);
 
         // Draw bars
