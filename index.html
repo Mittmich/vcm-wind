@@ -115,8 +115,7 @@
         <div class="card">
             <h3>ℹ️ How it works</h3>
             <div style="font-size:0.8em;color:#8899aa;line-height:1.5;">
-                The official GPX track is loaded from
-                <a href="https://www.vienna-marathon.com" style="color:#4fc3f7;">vienna-marathon.com</a>.
+                The GPX track is loaded from a local file included in this repository.
                 Wind data is fetched from <strong>Open-Meteo</strong> (free, no API key).
                 The path integral computes the dot product of the wind vector with the
                 running direction at each track segment, then averages over the total distance.
@@ -134,7 +133,7 @@
     // ============================================================
     //  Configuration
     // ============================================================
-    const GPX_URL = 'https://www.vienna-marathon.com/var/upload/public/2026/WienerStaedtischeHalbmarathon.gpx';
+    const GPX_URL = 'WienerStaedtischeHalbmarathon.gpx';
     // Maximum number of track points to keep (for performance).
     // The real GPX may have thousands of points; we downsample to this.
     const MAX_TRACK_POINTS = 500;
@@ -293,7 +292,7 @@
     async function loadGPX() {
         const btn = document.getElementById('btn-fetch');
         btn.disabled = true;
-        setStatus('Loading GPX track from vienna-marathon.com…');
+        setStatus('Loading GPX track…');
 
         try {
             const resp = await fetch(GPX_URL);
