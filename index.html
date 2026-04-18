@@ -489,7 +489,7 @@
             for (let i = 0; i < times.length; i++) {
                 const timePart = times[i].split('T')[1];
                 const d = times[i].split('T')[0];
-                if (timePart === targetTimePrefix && d === startDateStr) { startIdx = i; break; }
+                if (timePart.startsWith(targetTimePrefix) && d === startDateStr) { startIdx = i; break; }
             }
             if (startIdx === -1) throw new Error('Could not find matching time slot in forecast data.');
 
