@@ -271,8 +271,8 @@
         // Linearly interpolate speed, gust, temperature and solar radiation
         const speed = a.speed + (b.speed - a.speed) * frac;
         const gust  = a.gust  + (b.gust  - a.gust)  * frac;
-        const temp  = (a.temp != null && b.temp != null) ? a.temp + (b.temp - a.temp) * frac : (a.temp || 0);
-        const solar = (a.solar != null && b.solar != null) ? a.solar + (b.solar - a.solar) * frac : (a.solar || 0);
+        const temp  = (a.temp != null && b.temp != null) ? a.temp + (b.temp - a.temp) * frac : (a.temp ?? 0);
+        const solar = (a.solar != null && b.solar != null) ? a.solar + (b.solar - a.solar) * frac : (a.solar ?? 0);
 
         // Interpolate direction on shortest arc
         let dDir = b.dir - a.dir;
