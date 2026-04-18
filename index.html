@@ -168,7 +168,7 @@
                 The GPX track is loaded from a local file included in this repository.
                 Wind data is fetched from <strong>Open-Meteo</strong> (free, no API key).
                 Specify your expected runtime so that wind changes during the race are
-                accounted for – the tool interpolates hourly forecasts based on your pace.
+                accounted for – the tool interpolates 15-minute forecasts based on your pace.
                 The path integral computes the dot product of the wind vector with the
                 running direction at each track segment, then averages over the total distance.
                 Positive = net tailwind, Negative = net headwind.
@@ -263,19 +263,19 @@
     }
 
     /**
-     * Interpolate wind values at a given fractional hour offset from the start hour.
-     * windHours is an array of { speed, dir, gust } for consecutive hours.
-     * offsetHours is the elapsed time in hours from the first entry.
+     * Interpolate wind values at a given fractional slot offset from the start slot.
+     * windSlots is an array of { speed, dir, gust, temp, solar, rain } for consecutive 15-minute slots.
+     * offsetSlots is the elapsed time in 15-minute slots from the first entry.
      * Directions are interpolated via shortest angular path.
      */
-    function interpolateWind(windHours, offsetHours) {
-        if (windHours.length === 1 || offsetHours <= 0) return windHours[0];
-        if (offsetHours >= windHours.length - 1) return windHours[windHours.length - 1];
+    function interpolateWind(windSlots, offsetSlots) {
+        if (windSlots.length === 1 || offsetSlots <= 0) return windSlots[0];
+        if (offsetSlots >= windSlots.length - 1) return windSlots[windSlots.length - 1];
 
-        const idx = Math.floor(offsetHours);
-        const frac = offsetHours - idx;
-        const a = windHours[idx];
-        const b = windHours[idx + 1];
+        const idx = Math.floor(offsetSlots);
+        const frac = offsetSlots - idx;
+        const a = windSlots[idx];
+        const b = windSlots[idx + 1];
 
         // Linearly interpolate speed, gust, temperature, solar radiation and rain
         const speed = a.speed + (b.speed - a.speed) * frac;
@@ -471,41 +471,45 @@
         const startDateStr = dateVal;
         const endDateStr = endDate.toISOString().slice(0, 10);
 
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,shortwave_radiation,precipitation&start_date=${startDateStr}&end_date=${endDateStr}&timezone=Europe%2FVienna`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&minutely_15=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,shortwave_radiation,precipitation&start_date=${startDateStr}&end_date=${endDateStr}&timezone=Europe%2FVienna`;
 
         try {
             const resp = await fetch(url);
             if (!resp.ok) throw new Error(`API error: ${resp.status}`);
             const data = await resp.json();
 
-            // Find the starting hour index
+            // Find the starting 15-minute slot index
             const targetHour = parseInt(timeVal.split(':')[0], 10);
-            const times = data.hourly.time;
+            const targetMin = parseInt(timeVal.split(':')[1], 10);
+            // Round down to nearest 15-minute boundary
+            const targetMinSlot = Math.floor(targetMin / 15) * 15;
+            const targetTimePrefix = `${String(targetHour).padStart(2, '0')}:${String(targetMinSlot).padStart(2, '0')}`;
+            const times = data.minutely_15.time;
             let startIdx = -1;
             for (let i = 0; i < times.length; i++) {
-                const h = parseInt(times[i].split('T')[1].split(':')[0], 10);
+                const timePart = times[i].split('T')[1];
                 const d = times[i].split('T')[0];
-                if (h === targetHour && d === startDateStr) { startIdx = i; break; }
+                if (timePart.startsWith(targetTimePrefix) && d === startDateStr) { startIdx = i; break; }
             }
-            if (startIdx === -1) throw new Error('Could not find matching hour in forecast data.');
+            if (startIdx === -1) throw new Error('Could not find matching time slot in forecast data.');
 
-            // Collect hourly wind data for the runtime duration + 1 hour (for interpolation)
-            const hoursNeeded = Math.ceil(runtimeMinutes / 60) + 1;
-            const windHours = [];
-            for (let i = 0; i < hoursNeeded && (startIdx + i) < times.length; i++) {
+            // Collect 15-minute wind data for the runtime duration + 1 slot (for interpolation)
+            const slotsNeeded = Math.ceil(runtimeMinutes / 15) + 1;
+            const windSlots = [];
+            for (let i = 0; i < slotsNeeded && (startIdx + i) < times.length; i++) {
                 const j = startIdx + i;
-                windHours.push({
-                    speed: data.hourly.wind_speed_10m[j],
-                    dir:   data.hourly.wind_direction_10m[j],
-                    gust:  data.hourly.wind_gusts_10m[j],
-                    temp:  data.hourly.temperature_2m[j],
-                    solar: data.hourly.shortwave_radiation[j],
-                    rain:  data.hourly.precipitation[j]
+                windSlots.push({
+                    speed: data.minutely_15.wind_speed_10m[j],
+                    dir:   data.minutely_15.wind_direction_10m[j],
+                    gust:  data.minutely_15.wind_gusts_10m[j],
+                    temp:  data.minutely_15.temperature_2m[j],
+                    solar: data.minutely_15.shortwave_radiation[j],
+                    rain:  data.minutely_15.precipitation[j]
                 });
             }
-            if (windHours.length === 0) throw new Error('No wind data available for the specified time.');
+            if (windSlots.length === 0) throw new Error('No wind data available for the specified time.');
 
-            applyWind(windHours, runtimeMinutes);
+            applyWind(windSlots, runtimeMinutes);
             setStatus(`Forecast loaded for ${dateVal} ${timeVal} (runtime ${runtimeStr})`);
         } catch (err) {
             setStatus('Error: ' + err.message, true);
@@ -515,10 +519,10 @@
         }
     }
 
-    function applyWind(windHours, runtimeMinutes) {
-        const startWind = windHours[0];
-        const runtimeHours = runtimeMinutes / 60;
-        const endWind = interpolateWind(windHours, runtimeHours);
+    function applyWind(windSlots, runtimeMinutes) {
+        const startWind = windSlots[0];
+        const runtimeInSlots = runtimeMinutes / 15;
+        const endWind = interpolateWind(windSlots, runtimeInSlots);
 
         // Update start-of-race wind UI
         document.getElementById('wind-card').style.display = '';
@@ -534,7 +538,7 @@
         document.getElementById('arrow-poly').setAttribute('transform', `rotate(${(startWind.dir + 180) % 360},30,30)`);
 
         // Update end-of-race wind UI (show only if wind actually varies)
-        const windChanges = windHours.length > 1;
+        const windChanges = windSlots.length > 1;
         const endBlock = document.getElementById('wind-end-block');
         if (windChanges) {
             endBlock.style.display = '';
@@ -563,8 +567,8 @@
         const rainValues = [];
         for (let i = 0; i < TRACK.length - 1; i++) {
             const fracDist = cumDist[i] / totalDistance; // 0 to 1
-            const elapsedHours = fracDist * runtimeHours;
-            const wind = interpolateWind(windHours, elapsedHours);
+            const elapsedSlots = fracDist * runtimeInSlots;
+            const wind = interpolateWind(windSlots, elapsedSlots);
             const bear = bearing(TRACK[i], TRACK[i + 1]);
             const comp = windComponent(wind.speed, wind.dir, bear);
             components.push(comp);
