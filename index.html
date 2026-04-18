@@ -35,7 +35,7 @@
         .legend { display: flex; gap: 16px; justify-content: center; font-size: 0.8em; }
         .legend-item { display: flex; align-items: center; gap: 4px; }
         .legend-color { width: 20px; height: 4px; border-radius: 2px; }
-        #profile-canvas, #temp-canvas, #sun-canvas, #rain-canvas { width: 100%; height: 120px; border-radius: 4px; background: #111; }
+        #profile-canvas, #temp-canvas, #sun-canvas, #rain-canvas, #wind-speed-canvas, #wind-dir-canvas, #wind-arrows-canvas { width: 100%; height: 120px; border-radius: 4px; background: #111; }
         .status { font-size: 0.8em; color: #8899aa; text-align: center; padding: 4px; min-height: 24px; }
         .status.error { color: #e94560; }
         .info-row { display: flex; justify-content: space-between; font-size: 0.85em; padding: 2px 0; }
@@ -159,6 +159,30 @@
             <div class="legend" style="margin-top:8px;">
                 <div class="legend-item"><div class="legend-color" style="background:#555;"></div> Dry</div>
                 <div class="legend-item"><div class="legend-color" style="background:#2196f3;"></div> Wet</div>
+            </div>
+        </div>
+
+        <div class="card" id="wind-speed-card" style="display:none;">
+            <h3>💨 Wind Speed Along Track</h3>
+            <canvas id="wind-speed-canvas"></canvas>
+            <div class="legend" style="margin-top:8px;">
+                <div class="legend-item"><div class="legend-color" style="background:#4fc3f7;"></div> Wind speed (km/h)</div>
+            </div>
+        </div>
+
+        <div class="card" id="wind-dir-card" style="display:none;">
+            <h3>🧭 Wind Direction Along Track (Degrees)</h3>
+            <canvas id="wind-dir-canvas"></canvas>
+            <div class="legend" style="margin-top:8px;">
+                <div class="legend-item"><div class="legend-color" style="background:#ab47bc;"></div> Direction (°)</div>
+            </div>
+        </div>
+
+        <div class="card" id="wind-arrows-card" style="display:none;">
+            <h3>➡️ Wind Direction Along Track (Arrows)</h3>
+            <canvas id="wind-arrows-canvas"></canvas>
+            <div class="legend" style="margin-top:8px;">
+                <div class="legend-item">↓ = wind blowing FROM that direction</div>
             </div>
         </div>
 
@@ -531,6 +555,9 @@
         document.getElementById('temp-card').style.display = '';
         document.getElementById('sun-card').style.display = '';
         document.getElementById('rain-card').style.display = '';
+        document.getElementById('wind-speed-card').style.display = '';
+        document.getElementById('wind-dir-card').style.display = '';
+        document.getElementById('wind-arrows-card').style.display = '';
         document.getElementById('wind-speed').textContent = startWind.speed.toFixed(1);
         document.getElementById('wind-dir').textContent = startWind.dir.toFixed(0);
         document.getElementById('wind-from').textContent = compassDir(startWind.dir);
@@ -565,6 +592,8 @@
         const temperatures = [];
         const solarValues = [];
         const rainValues = [];
+        const windSpeeds = [];
+        const windDirs = [];
         for (let i = 0; i < TRACK.length - 1; i++) {
             const fracDist = cumDist[i] / totalDistance; // 0 to 1
             const elapsedSlots = fracDist * runtimeInSlots;
@@ -575,6 +604,8 @@
             temperatures.push(wind.temp);
             solarValues.push(wind.solar);
             rainValues.push(wind.rain);
+            windSpeeds.push(wind.speed);
+            windDirs.push(wind.dir);
         }
 
         const maxAbs = Math.max(1, Math.max(...components.map(Math.abs)));
@@ -638,6 +669,9 @@
         drawTemperatureProfile(temperatures, cumDist);
         drawSunIntensityProfile(solarValues, cumDist);
         drawRainProfile(rainValues, cumDist);
+        drawWindSpeedProfile(windSpeeds, cumDist);
+        drawWindDirectionProfile(windDirs, cumDist);
+        drawWindDirectionArrowsProfile(windDirs, cumDist);
     }
 
     // ============================================================
@@ -909,6 +943,265 @@
             ctx.fillText(km + 'km', x, H - 4);
             ctx.beginPath();
             ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + chartH);
+            ctx.stroke();
+        }
+    }
+
+    // ============================================================
+    //  Wind speed profile chart
+    // ============================================================
+    function drawWindSpeedProfile(windSpeeds, cumDist) {
+        const canvas = document.getElementById('wind-speed-canvas');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, W, H);
+
+        if (windSpeeds.length === 0) return;
+
+        const maxSpeed = Math.max(...windSpeeds) || 1;
+        const minSpeed = Math.min(...windSpeeds);
+        const padding = { top: 18, bottom: 20, left: 4, right: 4 };
+        const chartH = H - padding.top - padding.bottom;
+
+        // Draw area fill
+        ctx.beginPath();
+        for (let i = 0; i < windSpeeds.length; i++) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const normVal = (windSpeeds[i] - minSpeed) / (maxSpeed - minSpeed || 1);
+            const y = padding.top + chartH * (1 - normVal);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        const lastX = (cumDist[windSpeeds.length - 1] / totalDistance) * W;
+        ctx.lineTo(lastX, padding.top + chartH);
+        ctx.lineTo(0, padding.top + chartH);
+        ctx.closePath();
+
+        const grad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
+        grad.addColorStop(0, 'rgba(79,195,247,0.5)');
+        grad.addColorStop(1, 'rgba(79,195,247,0.05)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Draw line
+        ctx.beginPath();
+        for (let i = 0; i < windSpeeds.length; i++) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const normVal = (windSpeeds[i] - minSpeed) / (maxSpeed - minSpeed || 1);
+            const y = padding.top + chartH * (1 - normVal);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = '#4fc3f7';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = '#4fc3f7';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(maxSpeed.toFixed(1) + ' km/h', padding.left, padding.top - 4);
+        ctx.fillStyle = '#888';
+        ctx.fillText(minSpeed.toFixed(1) + ' km/h', padding.left, H - 4);
+
+        // Distance markers
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        for (let km = 5; km < totalDistance / 1000; km += 5) {
+            const x = (km * 1000 / totalDistance) * W;
+            ctx.fillText(km + 'km', x, H - 4);
+            ctx.beginPath();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + chartH);
+            ctx.stroke();
+        }
+    }
+
+    // ============================================================
+    //  Wind direction profile chart (degrees)
+    // ============================================================
+    function drawWindDirectionProfile(windDirs, cumDist) {
+        const canvas = document.getElementById('wind-dir-canvas');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, W, H);
+
+        if (windDirs.length === 0) return;
+
+        const padding = { top: 18, bottom: 20, left: 4, right: 4 };
+        const chartH = H - padding.top - padding.bottom;
+
+        // Draw dots for each direction value (0-360)
+        ctx.fillStyle = '#ab47bc';
+        for (let i = 0; i < windDirs.length; i++) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const normVal = windDirs[i] / 360;
+            const y = padding.top + chartH * (1 - normVal);
+            ctx.beginPath();
+            ctx.arc(x, y, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Draw connecting line (handling wrap-around: only connect if direction change < 180°)
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(171,71,188,0.5)';
+        ctx.lineWidth = 1;
+        let moved = false;
+        for (let i = 0; i < windDirs.length; i++) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const normVal = windDirs[i] / 360;
+            const y = padding.top + chartH * (1 - normVal);
+            if (!moved) { ctx.moveTo(x, y); moved = true; }
+            else {
+                const diff = Math.abs(windDirs[i] - windDirs[i - 1]);
+                if (diff > 180) {
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+        }
+        ctx.stroke();
+
+        // Y-axis labels: cardinal directions
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        const cardinals = [
+            { deg: 0, label: 'N (0°)' },
+            { deg: 90, label: 'E (90°)' },
+            { deg: 180, label: 'S (180°)' },
+            { deg: 270, label: 'W (270°)' },
+            { deg: 360, label: 'N (360°)' }
+        ];
+        for (const c of cardinals) {
+            const y = padding.top + chartH * (1 - c.deg / 360);
+            ctx.fillStyle = '#666';
+            ctx.fillText(c.label, W - padding.right, y + 3);
+            ctx.beginPath();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.moveTo(0, y);
+            ctx.lineTo(W - 50, y);
+            ctx.stroke();
+        }
+
+        // Distance markers
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        for (let km = 5; km < totalDistance / 1000; km += 5) {
+            const x = (km * 1000 / totalDistance) * W;
+            ctx.fillText(km + 'km', x, H - 4);
+            ctx.beginPath();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + chartH);
+            ctx.stroke();
+        }
+    }
+
+    // ============================================================
+    //  Wind direction arrows profile chart
+    // ============================================================
+    function drawWindDirectionArrowsProfile(windDirs, cumDist) {
+        const canvas = document.getElementById('wind-arrows-canvas');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, W, H);
+
+        if (windDirs.length === 0) return;
+
+        const padding = { top: 14, bottom: 18, left: 4, right: 4 };
+        const chartH = H - padding.top - padding.bottom;
+        const centerY = padding.top + chartH / 2;
+
+        // Draw arrows at regular intervals along the track
+        // Aim for roughly 30 arrows across the chart width
+        const arrowCount = Math.min(30, windDirs.length);
+        const step = Math.max(1, Math.floor(windDirs.length / arrowCount));
+        const arrowLen = 12;
+
+        for (let i = 0; i < windDirs.length; i += step) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const dirRad = windDirs[i] * DEG2RAD; // meteorological: wind blows FROM this direction
+
+            // Arrow points in the direction wind is blowing FROM
+            // So the arrow tip shows where wind comes from
+            const dx = Math.sin(dirRad) * arrowLen;
+            const dy = -Math.cos(dirRad) * arrowLen;
+
+            // Draw arrow shaft
+            ctx.beginPath();
+            ctx.moveTo(x - dx * 0.5, centerY - dy * 0.5);
+            ctx.lineTo(x + dx * 0.5, centerY + dy * 0.5);
+            ctx.strokeStyle = '#4fc3f7';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Draw arrowhead (at the tip, which shows wind direction FROM)
+            const tipX = x + dx * 0.5;
+            const tipY = centerY + dy * 0.5;
+            const headLen = 4;
+            const headAngle = Math.PI / 6;
+            const angle = Math.atan2(dy, dx);
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - headLen * Math.cos(angle - headAngle), tipY - headLen * Math.sin(angle - headAngle));
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - headLen * Math.cos(angle + headAngle), tipY - headLen * Math.sin(angle + headAngle));
+            ctx.strokeStyle = '#4fc3f7';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // Compass reference labels
+        ctx.fillStyle = '#666';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('Wind direction (from)', padding.left, padding.top - 2);
+
+        // Distance markers
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        for (let km = 5; km < totalDistance / 1000; km += 5) {
+            const x = (km * 1000 / totalDistance) * W;
+            ctx.fillText(km + 'km', x, H - 4);
+            ctx.beginPath();
+            ctx.strokeStyle = '#222';
             ctx.lineWidth = 1;
             ctx.moveTo(x, padding.top);
             ctx.lineTo(x, padding.top + chartH);
