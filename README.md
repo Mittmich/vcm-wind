@@ -6,7 +6,7 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 
 - **GPS Track**: Loads the **GPX track** (`WienerStaedtischeHalbmarathon.gpx`) and displays it on an interactive Leaflet map
 - **Wind Forecast**: Fetches real-time wind forecasts from [Open-Meteo](https://open-meteo.com/) (free, no API key required)
-- **Time-Varying Wind**: Specify your expected runtime and the tool accounts for wind changes during the race by interpolating hourly forecasts based on your pace
+- **Time-Varying Wind**: Specify your expected runtime and the tool accounts for wind changes during the race by interpolating 15-minute forecasts based on your pace
 - **Heatmap Visualization**: Colors the track green (tailwind), red (headwind), or yellow (crosswind) based on wind direction relative to running direction
 - **Path Integral**: Computes the net wind effect over the entire track by integrating the wind component along the running direction
 - **Wind Profile Chart**: Shows headwind/tailwind intensity along the track distance
@@ -32,7 +32,7 @@ wind_component = wind_speed × cos(wind_direction_to − running_bearing)
 ```
 
 **Time-varying wind:** When a runtime is specified, the tool assumes a constant pace and
-interpolates hourly wind forecasts for each track segment based on when the runner would
+interpolates 15-minute wind forecasts for each track segment based on when the runner would
 reach that point. Wind speed is linearly interpolated and wind direction is interpolated
 along the shortest angular arc.
 
