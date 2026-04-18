@@ -12,6 +12,7 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 - **Wind Profile Chart**: Shows headwind/tailwind intensity along the track distance
 - **Temperature Profile Chart**: Shows the forecasted temperature along the track distance, accounting for time-varying conditions during the race
 - **Sun Intensity Chart**: Shows the forecasted solar radiation (shortwave radiation in W/m²) along the track distance
+- **Rain Amount Chart**: Shows the forecasted precipitation (mm) along the track distance
 
 ## How to Use
 
