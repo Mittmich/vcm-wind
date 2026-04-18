@@ -35,7 +35,7 @@
         .legend { display: flex; gap: 16px; justify-content: center; font-size: 0.8em; }
         .legend-item { display: flex; align-items: center; gap: 4px; }
         .legend-color { width: 20px; height: 4px; border-radius: 2px; }
-        #profile-canvas { width: 100%; height: 120px; border-radius: 4px; background: #111; }
+        #profile-canvas, #temp-canvas, #sun-canvas { width: 100%; height: 120px; border-radius: 4px; background: #111; }
         .status { font-size: 0.8em; color: #8899aa; text-align: center; padding: 4px; min-height: 24px; }
         .status.error { color: #e94560; }
         .info-row { display: flex; justify-content: space-between; font-size: 0.85em; padding: 2px 0; }
@@ -132,6 +132,24 @@
                 <div class="legend-item"><div class="legend-color" style="background:#4caf50;"></div> Tailwind</div>
                 <div class="legend-item"><div class="legend-color" style="background:#e94560;"></div> Headwind</div>
                 <div class="legend-item"><div class="legend-color" style="background:#ffc107;"></div> Crosswind</div>
+            </div>
+        </div>
+
+        <div class="card" id="temp-card" style="display:none;">
+            <h3>🌡️ Temperature Along Track</h3>
+            <canvas id="temp-canvas"></canvas>
+            <div class="legend" style="margin-top:8px;">
+                <div class="legend-item"><div class="legend-color" style="background:#4fc3f7;"></div> Cooler</div>
+                <div class="legend-item"><div class="legend-color" style="background:#ff9800;"></div> Warmer</div>
+            </div>
+        </div>
+
+        <div class="card" id="sun-card" style="display:none;">
+            <h3>☀️ Sun Intensity Along Track</h3>
+            <canvas id="sun-canvas"></canvas>
+            <div class="legend" style="margin-top:8px;">
+                <div class="legend-item"><div class="legend-color" style="background:#555;"></div> Low</div>
+                <div class="legend-item"><div class="legend-color" style="background:#ffd600;"></div> High</div>
             </div>
         </div>
 
@@ -250,9 +268,11 @@
         const a = windHours[idx];
         const b = windHours[idx + 1];
 
-        // Linearly interpolate speed and gust
+        // Linearly interpolate speed, gust, temperature and solar radiation
         const speed = a.speed + (b.speed - a.speed) * frac;
         const gust  = a.gust  + (b.gust  - a.gust)  * frac;
+        const temp  = (a.temp != null && b.temp != null) ? a.temp + (b.temp - a.temp) * frac : (a.temp ?? 0);
+        const solar = (a.solar != null && b.solar != null) ? a.solar + (b.solar - a.solar) * frac : (a.solar ?? 0);
 
         // Interpolate direction on shortest arc
         let dDir = b.dir - a.dir;
@@ -260,7 +280,7 @@
         if (dDir < -180) dDir += 360;
         const dir = ((a.dir + dDir * frac) + 360) % 360;
 
-        return { speed, dir, gust };
+        return { speed, dir, gust, temp, solar };
     }
 
     /** Interpolate color from red (headwind) through yellow to green (tailwind) */
@@ -441,7 +461,7 @@
         const startDateStr = dateVal;
         const endDateStr = endDate.toISOString().slice(0, 10);
 
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&start_date=${startDateStr}&end_date=${endDateStr}&timezone=Europe%2FVienna`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${centerLat.toFixed(4)}&longitude=${centerLng.toFixed(4)}&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,shortwave_radiation&start_date=${startDateStr}&end_date=${endDateStr}&timezone=Europe%2FVienna`;
 
         try {
             const resp = await fetch(url);
@@ -467,7 +487,9 @@
                 windHours.push({
                     speed: data.hourly.wind_speed_10m[j],
                     dir:   data.hourly.wind_direction_10m[j],
-                    gust:  data.hourly.wind_gusts_10m[j]
+                    gust:  data.hourly.wind_gusts_10m[j],
+                    temp:  data.hourly.temperature_2m[j],
+                    solar: data.hourly.shortwave_radiation[j]
                 });
             }
             if (windHours.length === 0) throw new Error('No wind data available for the specified time.');
@@ -491,6 +513,8 @@
         document.getElementById('wind-card').style.display = '';
         document.getElementById('result-card').style.display = '';
         document.getElementById('profile-card').style.display = '';
+        document.getElementById('temp-card').style.display = '';
+        document.getElementById('sun-card').style.display = '';
         document.getElementById('wind-speed').textContent = startWind.speed.toFixed(1);
         document.getElementById('wind-dir').textContent = startWind.dir.toFixed(0);
         document.getElementById('wind-from').textContent = compassDir(startWind.dir);
@@ -519,9 +543,11 @@
         // Remove base track styling
         trackLine.setStyle({ opacity: 0 });
 
-        // Calculate wind component for each segment with time-varying wind
+        // Calculate wind component, temperature, and solar radiation for each segment with time-varying data
         // Assume constant pace: elapsed time is proportional to distance covered
         const components = [];
+        const temperatures = [];
+        const solarValues = [];
         for (let i = 0; i < TRACK.length - 1; i++) {
             const fracDist = cumDist[i] / totalDistance; // 0 to 1
             const elapsedHours = fracDist * runtimeHours;
@@ -529,6 +555,8 @@
             const bear = bearing(TRACK[i], TRACK[i + 1]);
             const comp = windComponent(wind.speed, wind.dir, bear);
             components.push(comp);
+            temperatures.push(wind.temp);
+            solarValues.push(wind.solar);
         }
 
         const maxAbs = Math.max(1, Math.max(...components.map(Math.abs)));
@@ -587,8 +615,10 @@
             interactive: false
         }).addTo(map);
 
-        // Draw profile chart
+        // Draw profile charts
         drawProfile(components, cumDist, maxAbs);
+        drawTemperatureProfile(temperatures, cumDist);
+        drawSunIntensityProfile(solarValues, cumDist);
     }
 
     // ============================================================
@@ -652,6 +682,154 @@
             ctx.strokeStyle = '#333';
             ctx.moveTo(x, 0);
             ctx.lineTo(x, H);
+            ctx.stroke();
+        }
+    }
+
+    // ============================================================
+    //  Temperature profile chart
+    // ============================================================
+    function drawTemperatureProfile(temperatures, cumDist) {
+        const canvas = document.getElementById('temp-canvas');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, W, H);
+
+        if (temperatures.length === 0) return;
+
+        const minTemp = Math.min(...temperatures);
+        const maxTemp = Math.max(...temperatures);
+        const tempRange = maxTemp - minTemp || 1;
+        const padding = { top: 18, bottom: 20, left: 4, right: 4 };
+        const chartH = H - padding.top - padding.bottom;
+
+        // Draw temperature area fill and line
+        ctx.beginPath();
+        for (let i = 0; i < temperatures.length; i++) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const normTemp = (temperatures[i] - minTemp) / tempRange;
+            const y = padding.top + chartH * (1 - normTemp);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+
+        // Close the area fill
+        const lastX = (cumDist[temperatures.length - 1] / totalDistance) * W;
+        ctx.lineTo(lastX, padding.top + chartH);
+        ctx.lineTo(0, padding.top + chartH);
+        ctx.closePath();
+
+        // Gradient fill
+        const grad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
+        grad.addColorStop(0, 'rgba(255,152,0,0.5)');
+        grad.addColorStop(1, 'rgba(79,195,247,0.15)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Draw the line on top
+        ctx.beginPath();
+        for (let i = 0; i < temperatures.length; i++) {
+            const x = (cumDist[i] / totalDistance) * W;
+            const normTemp = (temperatures[i] - minTemp) / tempRange;
+            const y = padding.top + chartH * (1 - normTemp);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = '#ff9800';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Temperature labels
+        ctx.fillStyle = '#ff9800';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(maxTemp.toFixed(1) + '°C', padding.left, padding.top - 4);
+        ctx.fillStyle = '#4fc3f7';
+        ctx.fillText(minTemp.toFixed(1) + '°C', padding.left, H - 4);
+
+        // Distance markers
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        for (let km = 5; km < totalDistance / 1000; km += 5) {
+            const x = (km * 1000 / totalDistance) * W;
+            ctx.fillText(km + 'km', x, H - 4);
+            ctx.beginPath();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + chartH);
+            ctx.stroke();
+        }
+    }
+
+    // ============================================================
+    //  Sun intensity profile chart
+    // ============================================================
+    function drawSunIntensityProfile(solarValues, cumDist) {
+        const canvas = document.getElementById('sun-canvas');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, W, H);
+
+        if (solarValues.length === 0) return;
+
+        const maxSolar = Math.max(...solarValues) || 1;
+        const padding = { top: 18, bottom: 20, left: 4, right: 4 };
+        const chartH = H - padding.top - padding.bottom;
+
+        // Draw bars for solar radiation
+        for (let i = 0; i < solarValues.length; i++) {
+            const val = solarValues[i];
+            const normVal = val / maxSolar;
+            const barH = normVal * chartH;
+            const x = (cumDist[i] / totalDistance) * W;
+            const w = Math.max(1, (segDist[i] / totalDistance) * W);
+
+            // Color from dark gray (low) to bright yellow (high)
+            const r = Math.round(85 + 170 * normVal);
+            const g = Math.round(85 + 129 * normVal);
+            const b = Math.round(85 - 85 * normVal);
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x, padding.top + chartH - barH, w, barH);
+        }
+
+        // Labels
+        ctx.fillStyle = '#ffd600';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(maxSolar.toFixed(0) + ' W/m²', padding.left, padding.top - 4);
+        ctx.fillStyle = '#555';
+        ctx.fillText('0 W/m²', padding.left, H - 4);
+
+        // Distance markers
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        for (let km = 5; km < totalDistance / 1000; km += 5) {
+            const x = (km * 1000 / totalDistance) * W;
+            ctx.fillText(km + 'km', x, H - 4);
+            ctx.beginPath();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.moveTo(x, padding.top);
+            ctx.lineTo(x, padding.top + chartH);
             ctx.stroke();
         }
     }
