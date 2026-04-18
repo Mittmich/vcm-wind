@@ -10,6 +10,8 @@ An interactive, client-side web tool that analyzes wind conditions for the Vienn
 - **Heatmap Visualization**: Colors the track green (tailwind), red (headwind), or yellow (crosswind) based on wind direction relative to running direction
 - **Path Integral**: Computes the net wind effect over the entire track by integrating the wind component along the running direction
 - **Wind Profile Chart**: Shows headwind/tailwind intensity along the track distance
+- **Temperature Profile Chart**: Shows the forecasted temperature along the track distance, accounting for time-varying conditions during the race
+- **Sun Intensity Chart**: Shows the forecasted solar radiation (shortwave radiation in W/m²) along the track distance
 
 ## How to Use
 
